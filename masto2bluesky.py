@@ -1,30 +1,26 @@
-import arrow
-import feedparser
 import logging
 import requests
-import sys
 
 from atproto import Client as BlueskyClient, client_utils as bluesky_client_utils
 from bs4 import BeautifulSoup
+from mastodon import Mastodon
 
 
 logger = logging.getLogger(__name__)
 
 
 class Masto2Bluesky:
-    LAST_UPDATED_FILENAME = "last_updated"
+    LAST_STATUS_FILENAME = "last_mastodon_status.txt"
     BLUESKY_SESSION_FILENAME = "bluesky_session.txt"
+    MASTODON_TOKEN_FILENAME = "mastodon_token.secret"
 
-    def __init__(self, mastodon_rss_url):
-        self.mastodon_rss_url = mastodon_rss_url
-
+    def __init__(self):
         try:
-            with open(self.LAST_UPDATED_FILENAME, "r") as last_updated_file:
-                last_feed_updated_string = last_updated_file.read()
-                self.last_feed_updated = arrow.get(last_feed_updated_string)
+            with open(self.LAST_STATUS_FILENAME, "r") as last_status_file:
+                self.last_status_id = int(last_status_file.read())
 
         except FileNotFoundError:
-            self.last_feed_updated = arrow.utcnow()
+            self.last_status_id = None
             
         self.bluesky_client = BlueskyClient()
         try:
@@ -35,6 +31,8 @@ class Masto2Bluesky:
             e = Exception("Could not find saved Bluesky session. Run 'save_bluesky_session.py'.")
             raise e from file_not_found_error
 
+        self.mastodon = Mastodon(access_token=self.MASTODON_TOKEN_FILENAME)
+
     def __enter__(self):
         return self
 
@@ -43,55 +41,51 @@ class Masto2Bluesky:
             bluesky_session = self.bluesky_client.export_session_string()
             bluesky_session_file.write(bluesky_session)
 
-        with open(self.LAST_UPDATED_FILENAME, "w") as last_updated_file:
-            last_updated_file.write(self.last_feed_updated.isoformat())
+        with open(self.LAST_STATUS_FILENAME, "w") as last_status_file:
+            last_status_file.write(str(self.last_status_id))
 
     def process_feed(self):
-        rss = feedparser.parse(self.mastodon_rss_url)
+        mastodon_account = self.mastodon.me()
+        statuses = self.mastodon.account_statuses(mastodon_account,
+                                                  exclude_reblogs=True,
+                                                  since_id=self.last_status_id)
 
-        feed_updated = arrow.get(rss.feed.updated_parsed)
+        if self.last_status_id is None and statuses:
+            self.last_status_id = statuses[0].id
+        else:
+            for status in statuses[::-1]:
+                if status.in_reply_to_account_id is None \
+                        or status.in_reply_to_account_id == mastodon_account.id:
+                    logger.info(f"Resposting {status.url}")
+                    self.post_to_bluesky(status)
 
-        for entry in rss.entries[::-1]:
-            entry_date = arrow.get(entry.published_parsed)
-            if entry_date > self.last_feed_updated:
-                logger.info(f"Resposting {entry.link}")
-                self.post_to_bluesky(entry)
+                self.last_status_id = status.id
 
-        self.last_feed_updated = feed_updated
+    def post_to_bluesky(self, status):
+        status_text = self.parse_status(status)
 
-    def post_to_bluesky(self, entry):
-        entry_text = self.parse_entry(entry)
-
-        if "media_content" in entry:
+        if status.media_attachments:
             images = []
             image_alts = []
 
-            for i, media in enumerate(entry.media_content):
-                if media["medium"] == "image":
-                    image_url = media["url"]
-
-                    if int(media["filesize"]) > 976560:  # apparently Bluesky's limit
-                        image_url = image_url.replace("original", "small")
-
-                    logger.info(f"Getting image {image_url}")
-                    image_resp = requests.get(image_url, stream=True)
+            for media in status.media_attachments:
+                if media.type == "image":
+                    logger.info(f"Getting image {media.preview_url}")
+                    image_resp = requests.get(media.preview_url, stream=True)
                     image_resp.raw.decode_content = True
                     images.append(image_resp.raw.read())
 
-                    if "content" in entry and i < len(entry.content):
-                        image_alts.append(entry.content[i]["value"])
-                    else:
-                        image_alts.append("")  # match length of images
+                    image_alts.append(media.description)
 
             if images:
-                self.bluesky_client.send_images(text=entry_text, images=images, image_alts=image_alts)
+                self.bluesky_client.send_images(text=status_text, images=images, image_alts=image_alts)
 
         else:
-            self.bluesky_client.send_post(entry_text)
+            self.bluesky_client.send_post(status_text)
 
     @staticmethod
-    def parse_entry(entry):
-        soup = BeautifulSoup(entry.description, "html.parser")
+    def parse_status(status):
+        soup = BeautifulSoup(status.content, "html.parser")
         paragraphs = []
 
         for tag in soup.children:
@@ -104,7 +98,7 @@ class Masto2Bluesky:
 
         text_builder = bluesky_client_utils.TextBuilder()
         if len(fulltext) > 300:
-            final_text = text_builder.text(f"{fulltext[:285]}... ").link("[Full Text]", entry.link)
+            final_text = text_builder.text(f"{fulltext[:285]}... ").link("[Full Text]", status.url)
         else:
             final_text = text_builder.text(fulltext)
 
@@ -112,9 +106,5 @@ class Masto2Bluesky:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <mastodon rss url>")
-        exit(1)
-
-    with Masto2Bluesky(sys.argv[1]) as masto2bluesky:
+    with Masto2Bluesky() as masto2bluesky:
         masto2bluesky.process_feed()
