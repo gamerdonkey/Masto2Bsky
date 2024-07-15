@@ -54,8 +54,9 @@ class Masto2Bluesky:
             self.last_status_id = statuses[0].id
         else:
             for status in statuses[::-1]:
-                if status.in_reply_to_account_id is None \
-                        or status.in_reply_to_account_id == mastodon_account.id:
+                if status.visibility == "public" \
+                        and (status.in_reply_to_account_id is None \
+                            or status.in_reply_to_account_id == mastodon_account.id):
                     logger.info(f"Resposting {status.url}")
                     self.post_to_bluesky(status)
 
