@@ -9,7 +9,7 @@ from mastodon import Mastodon
 logger = logging.getLogger(__name__)
 
 
-class Masto2Bluesky:
+class Masto2Bsky:
     LAST_STATUS_FILENAME = "last_mastodon_status.txt"
     BLUESKY_SESSION_FILENAME = "bluesky_session.txt"
     MASTODON_TOKEN_FILENAME = "mastodon_token.secret"
@@ -107,5 +107,5 @@ class Masto2Bluesky:
 
 
 if __name__ == "__main__":
-    with Masto2Bluesky() as masto2bluesky:
-        masto2bluesky.process_feed()
+    with Masto2Bsky() as masto2bsky:
+        masto2bsky.process_feed()
