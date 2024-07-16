@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "masto2bsky"
+version = "0.1.0"
+description = "Repost from Mastodon to Bluesky"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+requests = "^2.32.3"
+atproto = "^0.0.49"
+"Mastodon.py" = "^1.8.1"
+beautifulsoup4 = "^4.12.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
