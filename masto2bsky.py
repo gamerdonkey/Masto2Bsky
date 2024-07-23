@@ -17,76 +17,73 @@ class Masto2Bsky:
     MASTODON_TOKEN_FILENAME = "mastodon_token.secret"
 
     def __init__(self):
-        self.exit_event = Event()
+        self._exit_event = Event()
 
         try:
             with open(self.LAST_STATUS_FILENAME, "r") as last_status_file:
-                self.last_status_id = int(last_status_file.read())
+                self._last_status_id = int(last_status_file.read())
 
         except FileNotFoundError:
-            self.last_status_id = None
+            self._last_status_id = None
             
-        self.bluesky = BlueskyClient()
-        self.bluesky.on_session_change(self.on_bluesky_session_change)
+        self._bluesky = BlueskyClient()
+        self._bluesky.on_session_change(self._on_bluesky_session_change)
         try:
             with open(self.BLUESKY_SESSION_FILENAME, "r") as bluesky_session_file:
-                self.bluesky.login(session_string=bluesky_session_file.read())
+                self._bluesky.login(session_string=bluesky_session_file.read())
 
         except FileNotFoundError as file_not_found_error:
             e = Exception("Could not find saved Bluesky session. Run 'save_bluesky_session.py'.")
             raise e from file_not_found_error
 
-        self.mastodon = Mastodon(access_token=self.MASTODON_TOKEN_FILENAME)
-        self.mastodon_account = self.mastodon.me()
+        self._mastodon = Mastodon(access_token=self.MASTODON_TOKEN_FILENAME)
+        self._mastodon_account = self._mastodon.me()
 
-    def on_bluesky_session_change(self, event, session):
+    def run(self):
+        self._exit_event.clear()
+
+        signal.signal(signal.SIGINT, self._on_sigint)
+        signal.signal(signal.SIGTERM, self._on_sigint)
+
+        while not self._exit_event.is_set():
+            self.process_feed()
+            self._exit_event.wait(timeout=60)
+
+
+    def _on_sigint(self, signum, frame):
+        logger.warning(f"Exiting on signal: {signal.strsignal(signum)}")
+        self._exit_event.set()
+
+    def _on_bluesky_session_change(self, event, session):
         if event in (BlueskySessionEvent.CREATE, BlueskySessionEvent.REFRESH):
-            self.save_bluesky_session(session.export())
+            self._save_bluesky_session(session.export())
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.save_bluesky_session(self.bluesky.export_session_string())
-        self.save_last_status()
-
-    def save_bluesky_session(self, bluesky_session):
+    def _save_bluesky_session(self, bluesky_session):
         with open(self.BLUESKY_SESSION_FILENAME, "w") as bluesky_session_file:
             bluesky_session_file.write(bluesky_session)
 
-    def save_last_status(self):
+    def _save_last_status(self):
         with open(self.LAST_STATUS_FILENAME, "w") as last_status_file:
-            last_status_file.write(str(self.last_status_id))
-
-    def on_sigint(self, signum, frame):
-        logger.warning(f"Exiting on signal: {signal.strsignal(signum)}")
-        self.exit_event.set()
-
-    def run(self):
-        self.exit_event.clear()
-        signal.signal(signal.SIGINT, self.on_sigint)
-        signal.signal(signal.SIGTERM, self.on_sigint)
-
-        while not self.exit_event.is_set():
-            self.process_feed()
-            self.exit_event.wait(timeout=60)
+            last_status_file.write(str(self._last_status_id))
 
     def process_feed(self):
-        statuses = self.mastodon.account_statuses(self.mastodon_account,
+        statuses = self._mastodon.account_statuses(self._mastodon_account,
                                                   exclude_reblogs=True,
-                                                  since_id=self.last_status_id)
+                                                  since_id=self._last_status_id)
 
-        if self.last_status_id is None and statuses:
-            self.last_status_id = statuses[0].id
+        if self._last_status_id is None and statuses:
+            self._last_status_id = statuses[0].id
         else:
             for status in statuses[::-1]:
                 if status.visibility == "public" \
                         and (status.in_reply_to_account_id is None \
-                            or status.in_reply_to_account_id == self.mastodon_account.id):
+                            or status.in_reply_to_account_id == self._mastodon_account.id):
                     logger.info(f"Resposting {status.url}")
                     self.post_to_bluesky(status)
 
-                self.last_status_id = status.id
+                self._last_status_id = status.id
+
+        self._save_last_status()
 
     def post_to_bluesky(self, status):
         status_text = self.parse_status(status)
@@ -105,10 +102,10 @@ class Masto2Bsky:
                     image_alts.append(media.description)
 
             if images:
-                self.bluesky.send_images(text=status_text, images=images, image_alts=image_alts)
+                self._bluesky.send_images(text=status_text, images=images, image_alts=image_alts)
 
         else:
-            self.bluesky.send_post(status_text)
+            self._bluesky.send_post(status_text)
 
     @staticmethod
     def parse_status(status):
@@ -132,10 +129,5 @@ class Masto2Bsky:
         return final_text 
 
 
-def main():
-    with Masto2Bsky() as masto2bsky:
-        masto2bsky.run()
-
-
 if __name__ == "__main__":
-    main()
+    Masto2Bsky().run()
