@@ -47,7 +47,7 @@ class Masto2Bsky:
 
         while not self._exit_event.is_set():
             self.process_feed()
-            self._exit_event.wait(timeout=60)
+            self._exit_event.wait(timeout=60 * 5)
 
 
     def _on_sigint(self, signum, frame):
