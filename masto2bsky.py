@@ -25,7 +25,11 @@ class Masto2Bsky:
 
         except FileNotFoundError:
             self._last_toot_id = None
-            
+
+        self._last_reposted_toot_id = None
+        self._last_post_ref = None
+        self._last_root_post_ref = None
+
         self._bluesky = BlueskyClient()
         self._bluesky.on_session_change(self._on_bluesky_session_change)
         try:
@@ -67,9 +71,9 @@ class Masto2Bsky:
             last_toot_file.write(str(self._last_toot_id))
 
     def process_feed(self):
-        toots = self._mastodon.account_statusess(self._mastodon_account,
-                                                 exclude_reblogs=True,
-                                                 since_id=self._last_toot_id)
+        toots = self._mastodon.account_statuses(self._mastodon_account,
+                                                exclude_reblogs=True,
+                                                since_id=self._last_toot_id)
 
         if self._last_toot_id is None and toots:
             self._last_toot_id = toots[0].id
@@ -88,6 +92,14 @@ class Masto2Bsky:
     def post_to_bluesky(self, toot):
         toot_text = self.parse_toot(toot)
 
+        reply_ref = None
+        if toot.in_reply_to_id \
+                and toot.in_reply_to_id == self._last_reposted_toot_id \
+                and self._last_post_ref \
+                and self._last_root_post_ref:
+            reply_ref = models.AppBskyFeedPost.ReplyRef(parent=self._last_post_ref,
+                                                        root=self._last_root_post_ref)
+
         if toot.media_attachments:
             images = []
             image_alts = []
@@ -102,10 +114,19 @@ class Masto2Bsky:
                     image_alts.append(media.description)
 
             if images:
-                self._bluesky.send_images(text=toot_text, images=images, image_alts=image_alts)
+                response = self._bluesky.send_images(text=toot_text,
+                                                     images=images,
+                                                     image_alts=image_alts,
+                                                     reply_to=reply_ref)
 
         else:
-            self._bluesky.send_post(toot_text)
+            response = self._bluesky.send_post(toot_text, reply_to=reply_ref)
+
+        self._last_reposted_toot_id = toot.id
+        self._last_post_ref = models.create_strong_ref(response)
+
+        if reply_ref is None:
+            self._last_root_post_ref = self._last_post_ref
 
     @staticmethod
     def parse_toot(toot):
