@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class Masto2Bsky:
-    LAST_STATUS_FILENAME = "last_mastodon_status.txt"
+    LAST_TOOT_FILENAME = "last_mastodon_toot.txt"
     BLUESKY_SESSION_FILENAME = "bluesky_session.txt"
     MASTODON_TOKEN_FILENAME = "mastodon_token.secret"
 
@@ -20,11 +20,11 @@ class Masto2Bsky:
         self._exit_event = Event()
 
         try:
-            with open(self.LAST_STATUS_FILENAME, "r") as last_status_file:
-                self._last_status_id = int(last_status_file.read())
+            with open(self.LAST_TOOT_FILENAME, "r") as last_toot_file:
+                self._last_toot_id = int(last_toot_file.read())
 
         except FileNotFoundError:
-            self._last_status_id = None
+            self._last_toot_id = None
             
         self._bluesky = BlueskyClient()
         self._bluesky.on_session_change(self._on_bluesky_session_change)
@@ -62,37 +62,37 @@ class Masto2Bsky:
         with open(self.BLUESKY_SESSION_FILENAME, "w") as bluesky_session_file:
             bluesky_session_file.write(bluesky_session)
 
-    def _save_last_status(self):
-        with open(self.LAST_STATUS_FILENAME, "w") as last_status_file:
-            last_status_file.write(str(self._last_status_id))
+    def _save_last_toot(self):
+        with open(self.LAST_TOOT_FILENAME, "w") as last_toot_file:
+            last_toot_file.write(str(self._last_toot_id))
 
     def process_feed(self):
-        statuses = self._mastodon.account_statuses(self._mastodon_account,
-                                                  exclude_reblogs=True,
-                                                  since_id=self._last_status_id)
+        toots = self._mastodon.account_statusess(self._mastodon_account,
+                                                 exclude_reblogs=True,
+                                                 since_id=self._last_toot_id)
 
-        if self._last_status_id is None and statuses:
-            self._last_status_id = statuses[0].id
+        if self._last_toot_id is None and toots:
+            self._last_toot_id = toots[0].id
         else:
-            for status in statuses[::-1]:
-                if status.visibility == "public" \
-                        and (status.in_reply_to_account_id is None \
-                            or status.in_reply_to_account_id == self._mastodon_account.id):
-                    logger.info(f"Resposting {status.url}")
-                    self.post_to_bluesky(status)
+            for toot in toots[::-1]:
+                if toot.visibility == "public" \
+                        and (toot.in_reply_to_account_id is None \
+                            or toot.in_reply_to_account_id == self._mastodon_account.id):
+                    logger.info(f"Resposting {toot.url}")
+                    self.post_to_bluesky(toot)
 
-                self._last_status_id = status.id
+                self._last_toot_id = toot.id
 
-        self._save_last_status()
+        self._save_last_toot()
 
-    def post_to_bluesky(self, status):
-        status_text = self.parse_status(status)
+    def post_to_bluesky(self, toot):
+        toot_text = self.parse_toot(toot)
 
-        if status.media_attachments:
+        if toot.media_attachments:
             images = []
             image_alts = []
 
-            for media in status.media_attachments:
+            for media in toot.media_attachments:
                 if media.type == "image":
                     logger.info(f"Getting image {media.preview_url}")
                     image_resp = requests.get(media.preview_url, stream=True)
@@ -102,14 +102,14 @@ class Masto2Bsky:
                     image_alts.append(media.description)
 
             if images:
-                self._bluesky.send_images(text=status_text, images=images, image_alts=image_alts)
+                self._bluesky.send_images(text=toot_text, images=images, image_alts=image_alts)
 
         else:
-            self._bluesky.send_post(status_text)
+            self._bluesky.send_post(toot_text)
 
     @staticmethod
-    def parse_status(status):
-        soup = BeautifulSoup(status.content, "html.parser")
+    def parse_toot(toot):
+        soup = BeautifulSoup(toot.content, "html.parser")
         paragraphs = []
 
         for tag in soup.children:
@@ -122,7 +122,7 @@ class Masto2Bsky:
 
         text_builder = bluesky_utils.TextBuilder()
         if len(fulltext) > 300:
-            final_text = text_builder.text(f"{fulltext[:285]}... ").link("[Full Text]", status.url)
+            final_text = text_builder.text(f"{fulltext[:285]}... ").link("[Full Text]", toot.url)
         else:
             final_text = text_builder.text(fulltext)
 
