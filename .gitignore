@@ -3,3 +3,4 @@ last_mastodon_status.txt
 reposter_app.secret
 mastodon_token.secret
 venv/
+__pycache__/

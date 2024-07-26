@@ -6,6 +6,7 @@ from atproto import (Client as BlueskyClient, client_utils as bluesky_utils, Ses
 from bs4 import BeautifulSoup
 from mastodon import Mastodon
 from threading import Event
+from toot_parser import TootParser
 
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ class Masto2Bsky:
         self._save_last_toot()
 
     def post_to_bluesky(self, toot):
-        toot_text = self.parse_toot(toot)
+        toot_text = TootParser(toot).text_builder
 
         reply_ref = None
         if toot.in_reply_to_id \
@@ -127,27 +128,6 @@ class Masto2Bsky:
 
         if reply_ref is None:
             self._last_root_post_ref = self._last_post_ref
-
-    @staticmethod
-    def parse_toot(toot):
-        soup = BeautifulSoup(toot.content, "html.parser")
-        paragraphs = []
-
-        for tag in soup.children:
-            if tag.name == "p":
-                for br in soup.find_all("br"):
-                    br.replace_with("\n")
-                paragraphs.append(tag.get_text())
-
-        fulltext = "\n\n".join(paragraphs)
-
-        text_builder = bluesky_utils.TextBuilder()
-        if len(fulltext) > 300:
-            final_text = text_builder.text(f"{fulltext[:285]}... ").link("[Full Text]", toot.url)
-        else:
-            final_text = text_builder.text(fulltext)
-
-        return final_text 
 
 
 if __name__ == "__main__":
