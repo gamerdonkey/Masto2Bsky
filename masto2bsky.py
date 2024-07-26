@@ -2,7 +2,8 @@ import logging
 import requests
 import signal
 
-from atproto import (Client as BlueskyClient, client_utils as bluesky_utils, SessionEvent as BlueskySessionEvent)
+from atproto import (Client as BlueskyClient, client_utils as bluesky_utils,
+        SessionEvent as BlueskySessionEvent, models as bluesky_models)
 from bs4 import BeautifulSoup
 from mastodon import Mastodon
 from threading import Event
@@ -98,8 +99,8 @@ class Masto2Bsky:
                 and toot.in_reply_to_id == self._last_reposted_toot_id \
                 and self._last_post_ref \
                 and self._last_root_post_ref:
-            reply_ref = models.AppBskyFeedPost.ReplyRef(parent=self._last_post_ref,
-                                                        root=self._last_root_post_ref)
+            reply_ref = bluesky_models.AppBskyFeedPost.ReplyRef(parent=self._last_post_ref,
+                                                                root=self._last_root_post_ref)
 
         if toot.media_attachments:
             images = []
@@ -124,7 +125,7 @@ class Masto2Bsky:
             response = self._bluesky.send_post(toot_text, reply_to=reply_ref)
 
         self._last_reposted_toot_id = toot.id
-        self._last_post_ref = models.create_strong_ref(response)
+        self._last_post_ref = bluesky_models.create_strong_ref(response)
 
         if reply_ref is None:
             self._last_root_post_ref = self._last_post_ref
