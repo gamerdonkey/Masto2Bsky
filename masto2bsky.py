@@ -4,7 +4,6 @@ import signal
 
 from atproto import (Client as BlueskyClient, client_utils as bluesky_utils,
         SessionEvent as BlueskySessionEvent, models as bluesky_models)
-from bs4 import BeautifulSoup
 from mastodon import Mastodon
 from threading import Event
 from toot_parser import TootParser
@@ -14,20 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 class Masto2Bsky:
-    LAST_TOOT_FILENAME = "last_mastodon_toot.txt"
     BLUESKY_SESSION_FILENAME = "bluesky_session.txt"
     MASTODON_TOKEN_FILENAME = "mastodon_token.secret"
 
     def __init__(self):
         self._exit_event = Event()
 
-        try:
-            with open(self.LAST_TOOT_FILENAME, "r") as last_toot_file:
-                self._last_toot_id = int(last_toot_file.read())
-
-        except FileNotFoundError:
-            self._last_toot_id = None
-
+        self._last_toot_id = None
         self._last_reposted_toot_id = None
         self._last_post_ref = None
         self._last_root_post_ref = None
@@ -55,7 +47,6 @@ class Masto2Bsky:
             self.process_feed()
             self._exit_event.wait(timeout=60 * 5)
 
-
     def _on_sigint(self, signum, frame):
         logger.warning(f"Exiting on signal: {signal.strsignal(signum)}")
         self._exit_event.set()
@@ -67,10 +58,6 @@ class Masto2Bsky:
     def _save_bluesky_session(self, bluesky_session):
         with open(self.BLUESKY_SESSION_FILENAME, "w") as bluesky_session_file:
             bluesky_session_file.write(bluesky_session)
-
-    def _save_last_toot(self):
-        with open(self.LAST_TOOT_FILENAME, "w") as last_toot_file:
-            last_toot_file.write(str(self._last_toot_id))
 
     def process_feed(self):
         toots = self._mastodon.account_statuses(self._mastodon_account,
@@ -88,8 +75,6 @@ class Masto2Bsky:
                     self.post_to_bluesky(toot)
 
                 self._last_toot_id = toot.id
-
-        self._save_last_toot()
 
     def post_to_bluesky(self, toot):
         toot_text = TootParser(toot).text_builder
