@@ -19,7 +19,7 @@ poetry install
 The reposter can be run once credentials are stored:
 
 ```
-python masto2bsky.py
+python main.py
 ```
 
-The first run will not repost any toots and instead only stores the latest ID. This is then used to capture newer toots on subsequent runs of the reposter.
+Once started, Masto2Bsky will watch for new Mastodon toots and send them to the Bluesky account.

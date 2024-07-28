@@ -6,13 +6,13 @@ from atproto import (Client as BlueskyClient, client_utils as bluesky_utils,
         SessionEvent as BlueskySessionEvent, models as bluesky_models)
 from mastodon import Mastodon
 from threading import Event
-from toot_parser import TootParser
+from masto2bsky.toot_parser import TootParser
 
 
 logger = logging.getLogger(__name__)
 
 
-class Masto2Bsky:
+class Reposter:
     BLUESKY_SESSION_FILENAME = "bluesky_session.txt"
     MASTODON_TOKEN_FILENAME = "mastodon_token.secret"
 
@@ -115,6 +115,3 @@ class Masto2Bsky:
         if reply_ref is None:
             self._last_root_post_ref = self._last_post_ref
 
-
-if __name__ == "__main__":
-    Masto2Bsky().run()
