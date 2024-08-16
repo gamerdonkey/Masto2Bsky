@@ -4,9 +4,10 @@ import signal
 
 from atproto import (Client as BlueskyClient, client_utils as bluesky_utils,
         SessionEvent as BlueskySessionEvent, models as bluesky_models)
-from mastodon import Mastodon
-from threading import Event
 from masto2bsky.toot_parser import TootParser
+from mastodon import Mastodon
+from mastodon.errors import MastodonNetworkError
+from threading import Event
 
 
 logger = logging.getLogger(__name__)
@@ -60,9 +61,13 @@ class Reposter:
             bluesky_session_file.write(bluesky_session)
 
     def process_feed(self):
-        toots = self._mastodon.account_statuses(self._mastodon_account,
-                                                exclude_reblogs=True,
-                                                since_id=self._last_toot_id)
+        toots = []
+        try:
+            toots = self._mastodon.account_statuses(self._mastodon_account,
+                                                    exclude_reblogs=True,
+                                                    since_id=self._last_toot_id)
+        except MastodonNetworkError:
+            logger.exception("Errror retrieving toots!")
 
         if self._last_toot_id is None and toots:
             self._last_toot_id = toots[0].id
