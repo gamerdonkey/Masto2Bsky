@@ -35,7 +35,7 @@ class TootParser:
                 if "hashtag" in tag.get('class', []):
                     hashtag = self._fit_text(f"#{tag.span.get_text()}", is_last_tag)
 
-                    self._text_builder.tag(hashtag, hashtag.lower())
+                    self._text_builder.tag(hashtag, hashtag.lstrip("#"))
 
                 elif "class" not in tag.attrs:
                     url = tag['href']
