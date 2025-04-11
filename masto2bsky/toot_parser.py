@@ -1,5 +1,7 @@
+import re
+
 from bs4 import BeautifulSoup
-from atproto import client_utils
+from atproto import client_utils, IdResolver
 
 
 class TootParser:
@@ -9,6 +11,7 @@ class TootParser:
     def __init__(self, toot):
         self.num_chars_left = self.BLUESKY_LIMIT - self.OVERRUN_MESSAGE_LENGTH
         self._text_builder = client_utils.TextBuilder()
+        self._resolver = IdResolver()
         self.overrun = False
 
         self._parse(toot)
@@ -29,7 +32,21 @@ class TootParser:
             if tag.name is None and tag.parent.name == 'p':
                 text = self._fit_text(tag.get_text(), is_last_tag)
 
-                self._text_builder.text(text)
+                last_end = 0
+                for m in re.finditer(r"\@[\w\-\.]+\w", text):
+                    self._text_builder.text(text[last_end:m.start()])
+
+                    handle = m.group(0)
+                    did = self._resolver.handle.resolve(handle.lstrip("@"))
+
+                    if did:
+                        self._text_builder.mention(handle, did)
+                    else:
+                        self._text_builder.text(handle)
+
+                    last_end = m.end()
+
+                self._text_builder.text(text[last_end:])
 
             elif tag.name == 'a':
                 if "hashtag" in tag.get('class', []):
