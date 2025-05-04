@@ -28,7 +28,7 @@ class PostSplitter:
                 split_index = self.find_split(sub, start, end)
 
                 if split_index:
-                    end = split_index + 1
+                    end = split_index + len(sub)
                     break
 
             posts.append(Post(text=self._text[start:end].strip(), facets=self.get_contained_facets(start, end)))

@@ -30,7 +30,7 @@ class TestPostSplitter:
 
         assert posts[0].text == (post_0 + substring).strip()
         assert posts[1].text == post_1
-    
+
     def test_split_on_multiple_substrings(self, text_builder):
         post_0 = ("0"*150) + "?"
         post_1 = ("1"*150) + "."
@@ -40,6 +40,18 @@ class TestPostSplitter:
         posts = PostSplitter(text_builder).split()
 
         assert posts[0].text == post_0
+        assert posts[1].text == post_1
+        assert posts[2].text == post_2
+
+    def test_split_on_double_newline_does_not_create_extra_blank_post(self, text_builder):
+        post_0 = ("0"*150) + "\n\n"
+        post_1 = ("1"*150) + "."
+        post_2 = ("2"*150) + "."
+        text_builder.text(f"{post_0} {post_1} {post_2}")
+
+        posts = PostSplitter(text_builder).split()
+
+        assert posts[0].text == post_0.strip()
         assert posts[1].text == post_1
         assert posts[2].text == post_2
 
